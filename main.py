@@ -4,6 +4,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import geopandas as gpd
+from sklearn.cluster import KMeans
 from sklearn.preprocessing import LabelEncoder
 
 # setare stil grafice
@@ -17,10 +18,10 @@ def load_data():
 df = load_data()
 
 # creare tab-uri
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs(["Descrierea Dataset-ului", "Explorarea Datelor", "Vizualizari & Filtrare",
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs(["Descrierea Dataset-ului", "Explorarea Datelor", "Vizualizari & Filtrare",
                                               "Tratare valori lipsa si a valorilor extreme", "Codificarea datelor",
                                               "Agregare si prelucrari statistice", "Utilizarea functiilor de grup",
-                                              "Geopandas"])
+                                              "Geopandas", "Analiza datelor"])
 
 # ---- DESCRIEREA DATASET-ULUI ----
 with tab1:
@@ -539,3 +540,144 @@ with tab8:
         st.pyplot(fig)
     else:
         st.write("Selecteaza cel putin o tara pentru a vedea harta")
+
+with tab9:
+    st.title("Analiza datelor")
+
+    option = st.selectbox("Selecteaza tipul de analiza a datelor", ["Clusterizare", "Regresie logistica", "Regresie multipla"])
+
+    if option == "Clusterizare":
+        df = st.session_state.df
+
+        missing_values = df.isnull().sum()
+        st.write("missing values")
+        st.write(missing_values)
+
+        st.write("O sa eleminam pentru clusterizare anumite coloane care contin date de tip sir de caractere pentru a face mai usoara aplicarea algoritmului pentru cluster.")
+        st.write("Coloanele pe care le vom elimina din setul de date sunt: title, airing, aired_string si studio.")
+        st.write("Pentru restul coloanelor de tip sir de caractere vom aplica Label Encoding.")
+
+        clusterizareDf = df.copy()
+        clusterizareDf.drop(['title'], axis=1, inplace=True)
+        clusterizareDf.drop(['studio'], axis=1, inplace=True)
+        clusterizareDf.drop(['airing'], axis=1, inplace=True)
+        clusterizareDf.drop(['aired_string'], axis=1, inplace=True)
+        st.write(
+            "Coloana genre o vom trata usor mai diferit deoarece un anime aparatine mai multor genuri, asa ca vom lua genul principal si pentru acela aplica label encoding, iar coloana genre o vom sterge")
+        clusterizareDf['first_genre'] = df['genre'].apply(lambda x: x.split(',')[0].strip() if pd.notnull(x) else '')
+        clusterizareDf.drop(['genre'], axis=1, inplace=True)
+
+        label_encoders = {}
+
+        coloane_categoricale = ['type', 'rating', 'status', 'source', 'first_genre']
+        for col in coloane_categoricale:
+            if col in clusterizareDf.columns:
+                le = LabelEncoder()
+                clusterizareDf[col] = le.fit_transform(clusterizareDf[col].astype(str))
+                label_encoders[col] = dict(zip(le.classes_, le.transform(le.classes_)))
+
+        st.write("De asemenea vom da drop la coloana anime_id si rank")
+        clusterizareDf.drop(['anime_id'], axis=1, inplace=True)
+        clusterizareDf.drop(['rank'], axis=1, inplace=True)
+
+
+        st.write("Cum arata datele in dupa stergerea coloanelor si aplicarea label encoding")
+        st.dataframe(clusterizareDf.head())
+
+        from sklearn.preprocessing import StandardScaler
+        scaler = StandardScaler()
+        date_scaled = pd.DataFrame(scaler.fit_transform(clusterizareDf))
+
+        fig, ax = plt.subplots()
+        sns.boxplot(data=date_scaled, ax=ax)
+        ax.set_title("Boxplot pentru detectarea outlierelor")
+        st.pyplot(fig)
+
+        fig2, ax2 = plt.subplots()
+        correlation_matrix = date_scaled.corr()
+        sns.heatmap(correlation_matrix, annot=True, ax=ax2)
+        ax2.set_title('Heatmap pentru analiza corelatiei')
+        st.pyplot(fig2)
+
+        st.subheader("Selecteaza coloanele pentru care vrei sa calculezi numarul de clustere si pentru care o sa evaluam modelul")
+        selected_columns = st.multiselect("Alege coloanele", clusterizareDf.columns, default=clusterizareDf.columns)
+
+        X = clusterizareDf[selected_columns].values
+
+        wcss = []
+        for i in range(1, 11):
+            kmeans = KMeans(n_clusters=i, init='k-means++', random_state=42)
+            kmeans.fit(X)
+            wcss.append(kmeans.inertia_)
+
+        fig, ax = plt.subplots(figsize=(10, 5))
+        sns.lineplot(x=range(1, 11), y=wcss, marker='o', color='red')
+        ax.set_title('The Elbow Method')
+        ax.set_xlabel('Number of clusters')
+        ax.set_ylabel('WCSS')
+        st.pyplot(fig)
+
+        # Fitting K-Means to the dataset
+        kmeans = KMeans(n_clusters=3, init='k-means++', random_state=42)
+        y_kmeans = kmeans.fit_predict(X)
+
+        # Visualising the clusters
+        fig, ax = plt.subplots(figsize=(15, 7))
+        sns.scatterplot(x=X[y_kmeans == 0, 0], y=X[y_kmeans == 0, 1], color='yellow', label='Cluster 1', s=50, ax=ax)
+        sns.scatterplot(x=X[y_kmeans == 1, 0], y=X[y_kmeans == 1, 1], color='blue', label='Cluster 2', s=50, ax=ax)
+        sns.scatterplot(x=X[y_kmeans == 2, 0], y=X[y_kmeans == 2, 1], color='green', label='Cluster 3', s=50, ax=ax)
+        sns.scatterplot(x=kmeans.cluster_centers_[:, 0], y=kmeans.cluster_centers_[:, 1], color='red',
+                        label='Centroids', s=300, marker=',', ax=ax)
+
+        ax.set_title('Clusters of customers')
+        ax.set_xlabel(selected_columns[0])
+        ax.set_ylabel(selected_columns[1])
+        ax.legend()
+        ax.grid(False)
+        st.pyplot(fig)
+
+        # Evaluarea modelului K-Means
+        # -----------------------------------------------------------
+
+        from sklearn.metrics import silhouette_score
+
+        # Silhouette Score
+        """
+        Măsoară cât de apropiat este un punct de clusterul său comparativ cu celelalte clustere.
+        Scorul este între -1 și 1:
+
+        ~1 → punctul este bine încadrat
+
+        ~0 → este la graniță între clustere
+
+        < 0 → probabil este pus greșit în cluster"""
+
+        best_k = 3
+        best_score = -1
+
+        silhouette_scores = []
+        for k in range(2, 11):
+            kmeans = KMeans(n_clusters=k, init='k-means++', random_state=42)
+            preds = kmeans.fit_predict(X)
+            score = silhouette_score(X, preds)
+            silhouette_scores.append(score)
+
+            if score > best_score:
+                best_score = score
+                best_k = k
+
+        st.write(f"**Numarul optim de clustere (Silhouette):** `{best_k}` (scor: `{best_score:.4f}`)")
+
+        sil_score = silhouette_score(X, y_kmeans)
+        st.subheader("Evaluare Model")
+        st.write(f"**Silhouette Score pentru {best_k} clustere:** `{sil_score:.4f}`")
+
+        # Interpretare:
+        # +1 = clustere bine definite, 0 = la limită, <0 = atribuire greșită
+
+        st.write("**Silhouette Scores pentru diferite valori ale lui k:**")
+        for k in range(2, 11):
+            km = KMeans(n_clusters=k, init='k-means++', random_state=42)
+            preds = km.fit_predict(X)
+            score = silhouette_score(X, preds)
+            st.write(f'k = {k} --> silhouette score = {score:.4f}')
