@@ -3,6 +3,7 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+import geopandas as gpd
 from sklearn.preprocessing import LabelEncoder
 
 # setare stil grafice
@@ -16,9 +17,10 @@ def load_data():
 df = load_data()
 
 # creare tab-uri
-tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["Descrierea Dataset-ului", "Explorarea Datelor", "Vizualizari & Filtrare",
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs(["Descrierea Dataset-ului", "Explorarea Datelor", "Vizualizari & Filtrare",
                                               "Tratare valori lipsa si a valorilor extreme", "Codificarea datelor",
-                                              "Agregare si prelucrari statistice", "Utilizarea functiilor de grup"])
+                                              "Agregare si prelucrari statistice", "Utilizarea functiilor de grup",
+                                              "Geopandas"])
 
 # ---- DESCRIEREA DATASET-ULUI ----
 with tab1:
@@ -104,7 +106,7 @@ with tab3:
     st.subheader("Top 10 Studiouri cu Cele Mai Multe Anime-uri")
     top_studios = df["studio"].value_counts().head(10)
     fig, ax = plt.subplots(figsize=(10, 5))
-    sns.barplot(y=top_studios.index, x=top_studios.values, palette="coolwarm", ax=ax)
+    sns.barplot(y=top_studios.index, x=top_studios.values,hue=top_studios.index, palette="coolwarm", ax=ax)
     ax.set_xlabel("Numar de Anime-uri")
     ax.set_ylabel("Studio")
     st.pyplot(fig)
@@ -239,7 +241,7 @@ with tab4:
             axes[1].set_title(f"Boxplot pentru {col}")
 
             # Density Plot
-            sns.kdeplot(df[col], shade=True, ax=axes[2])
+            sns.kdeplot(df[col], fill=True, ax=axes[2])
             axes[2].set_title(f"Density Plot pentru {col}")
 
             st.pyplot(fig)
@@ -519,3 +521,21 @@ with tab7:
                 st.write("Sugestii:")
                 st.write("- Asigurati-va ca coloanele de grupare nu contin prea multe valori unice")
                 st.write("- Pentru coloanele non-numerice, folositi doar functii precum 'count', 'first', 'last'")
+
+with tab8:
+    st.title("Selecteaza tari pentru harta")
+
+    gdf = gpd.read_file("ne_10m_admin_0_countries.zip")
+
+    countries = gdf['NAME'].unique()
+    selected_countries = st.multiselect("Alege tarile: ", sorted(countries))
+
+    if selected_countries:
+        filtered_gdf = gdf[gdf['NAME'].isin(selected_countries)]
+
+        fig, ax = plt.subplots(figsize=(10,6))
+
+        filtered_gdf.plot(ax=ax, color='lightgreen', edgecolor='black')
+        st.pyplot(fig)
+    else:
+        st.write("Selecteaza cel putin o tara pentru a vedea harta")
