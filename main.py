@@ -39,6 +39,7 @@ with tab1:
     - **anime_id**: Id-ul anime-ului 
     - **title**: Numele anime-ului folosind romaji
     - **title_english**: Numele anime-ului in limba engleza
+    - **type**: tipul de animw
     - **source**: Sursa de la care provine anime-ul (manga, light novel etc.)
     - **episodes**: Numarul de episoade  
     - **status**: Prezinta daca anime-ul a fost terminat de difuzat sau nu
@@ -639,7 +640,7 @@ with tab9:
         # Evaluarea modelului K-Means
         # -----------------------------------------------------------
 
-        from sklearn.metrics import silhouette_score
+        from sklearn.metrics import silhouette_score, roc_curve, auc
 
         # Silhouette Score
         """
@@ -682,11 +683,80 @@ with tab9:
             score = silhouette_score(X, preds)
             st.write(f'k = {k} --> silhouette score = {score:.4f}')
     elif option == "Regresie logistica":
-        st.write("something")
+        df_log = st.session_state.df.copy()
+
+        st.write("## Regresie Logistica - Clasificarea anime-urilor ca 'bune' sau 'slabe'")
+
+        df_log.drop(['anime_id', 'title', 'rank', 'aired_string', 'airing'], axis=1, inplace=True)
+
+        st.write("Variabila tinta binara pe care o sa o creeam pentru a determina daca un anime este bun sau nu este score.")
+        st.write("Daca score >= 7.5 anime-ul este bun, iar daca score < 7.5 anime-ul este slab")
+        df_log['target'] = df_log['score'].apply(lambda x: 1 if x >= 7.5 else 0)
+        df_log.drop(['score'], axis=1, inplace=True)
+
+        df_log['first_genre'] = df_log['genre'].apply(lambda x: x.split(',')[0].strip() if pd.notnull(x) else '')
+        df_log.drop(['genre'], axis=1, inplace=True)
+
+        categorical_cols = ['type', 'source', 'rating', 'status', 'studio', 'first_genre']
+        df_log = pd.get_dummies(df_log, columns=categorical_cols, drop_first=True)
+
+        df_log.fillna(df_log.median(numeric_only=True), inplace=True)
+
+        st.write("Dimensiunea finala a setului de date pentru regresie logistica:", df_log.shape)
+
+        # Separare X și y
+        X = df_log.drop(['score', 'target'], axis=1, errors='ignore')
+        y = df_log['target']
+
+        from sklearn.model_selection import train_test_split
+        from sklearn.linear_model import LogisticRegression
+        from sklearn.metrics import classification_report, confusion_matrix, accuracy_score, roc_curve, auc
+
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+        st.write(f"Dimensiuni seturi de date: Antrenare - {X_train.shape}, Test - {X_test.shape}")
+
+        model = LogisticRegression(max_iter=1000)
+        model.fit(X_train, y_train)
+
+        y_pred = model.predict(X_test)
+        y_proba = model.predict_proba(X_test)[:, 1]
+
+        st.subheader("Performanta modelului")
+        st.write(f"**Acuratete:** {accuracy_score(y_test, y_pred):.4f}")
+        st.text("Matricea de Confuzie")
+        st.write(confusion_matrix(y_test, y_pred))
+        st.text("Raport de Clasificare")
+        st.text(classification_report(y_test, y_pred))
+
+        st.subheader("Coeficientii modelului")
+        coef_df = pd.DataFrame({
+            'Feature': X.columns,
+            'Coefficient': model.coef_[0]
+        }).sort_values('Coefficient', ascending=False)
+
+        st.dataframe(coef_df)
+
+        fpr, tpr, thresholds = roc_curve(y_test, y_proba)
+        roc_auc = auc(fpr, tpr)
+
+        st.subheader("Curba ROC și AUC")
+        fig, ax = plt.subplots(figsize=(8, 6))
+        ax.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (AUC = {roc_auc:.2f})')
+        ax.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+        ax.set_xlim([0.0, 1.0])
+        ax.set_ylim([0.0, 1.05])
+        ax.set_xlabel('False Positive Rate')
+        ax.set_ylabel('True Positive Rate')
+        ax.set_title('Receiver Operating Characteristic')
+        ax.legend(loc="lower right")
+        st.pyplot(fig)
+
+        st.write(f"**AUC (Area Under Curve):** `{roc_auc:.4f}`")
 
     elif option == "Regresie multipla":
         df_regresie_multipla = st.session_state.df.copy()
-        df_regresie_multipla.drop(['title', 'rank', 'anime_id'], axis=1, inplace=True)
+        df_regresie_multipla.drop(['title', 'rank', 'anime_id', 'airing', 'aired_score'], axis=1, inplace=True)
 
         st.write("**Structura datelor pentru regresie**")
         st.write(f"Datele contin {df_regresie_multipla.shape[0]} observatii si {df_regresie_multipla.shape[1]} coloane dupa eliminarea celor nedorite")
