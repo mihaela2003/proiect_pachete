@@ -681,3 +681,88 @@ with tab9:
             preds = km.fit_predict(X)
             score = silhouette_score(X, preds)
             st.write(f'k = {k} --> silhouette score = {score:.4f}')
+    elif option == "Regresie logistica":
+        st.write("something")
+
+    elif option == "Regresie multipla":
+        df_regresie_multipla = st.session_state.df.copy()
+        df_regresie_multipla.drop(['title', 'rank', 'anime_id'], axis=1, inplace=True)
+
+        st.write("**Structura datelor pentru regresie**")
+        st.write(f"Datele contin {df_regresie_multipla.shape[0]} observatii si {df_regresie_multipla.shape[1]} coloane dupa eliminarea celor nedorite")
+
+        missing_values = df.isnull().sum()
+        st.write("Valori lipsa")
+        st.write(missing_values)
+
+        df_regresie_multipla['first_genre'] = df['genre'].apply(lambda x: x.split(',')[0].strip() if pd.notnull(x) else '')
+        df_regresie_multipla.drop(['genre'], axis=1, inplace=True)
+
+        st.write("**Codificare variabile categorice**")
+        st.write("Selectam anumite coloane categorice relevante pentru care o sa aplicam One-Hot Encoding")
+
+        categorical_cols = ['first_genre', 'rating', 'studio', 'source', 'type']
+        df_regresie_multipla = pd.get_dummies(df_regresie_multipla, columns=categorical_cols, drop_first=True)
+
+        st.write("Dimensiunea datelor după codificare:", df_regresie_multipla.shape)
+        st.write("Exemplu de coloane create:", list(df_regresie_multipla.columns)[-10:])
+
+        st.write("**Selectare variabile pentru model**")
+        st.write("""
+               **Variabila dependenta (target):** 'score' - scorul IMDb/MAL al anime-ului  
+               **Variabile independente (predictori):** caracteristici numerice și cele codificate
+               """)
+
+        exclude_cols = ['anime_id', 'title_english', 'aired_string', 'status', 'airing']
+        X = df_regresie_multipla.drop(['score'] + exclude_cols, axis=1, errors='ignore')
+        y = df_regresie_multipla['score']
+
+        from sklearn.model_selection import train_test_split
+
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+        st.write(f"Dimensiuni seturi de date: Antrenare - {X_train.shape}, Test - {X_test.shape}")
+
+        from sklearn.linear_model import LinearRegression
+        from sklearn.metrics import mean_squared_error, r2_score
+
+        model = LinearRegression()
+        model.fit(X_train, y_train)
+
+        y_pred = model.predict(X_test)
+        mse = mean_squared_error(y_test, y_pred)
+        r2 = r2_score(y_test, y_pred)
+
+        st.write("**Metricile modelului:**")
+        st.write(f"- Mean Squared Error (MSE): {mse:.4f}")
+        st.write(f"- R-squared (R²): {r2:.4f}")
+
+        st.subheader("Coeficientii modelului")
+        coef_df = pd.DataFrame({
+            'Feature': X.columns,
+            'Coefficient': model.coef_
+        }).sort_values('Coefficient', ascending=False)
+
+        st.dataframe(coef_df)
+
+        st.subheader("Predictii vs Valori Reale")
+        fig, ax = plt.subplots(figsize=(10, 6))
+        sns.scatterplot(x=y_test, y=y_pred, alpha=0.6, ax=ax)
+        ax.plot([y.min(), y.max()], [y.min(), y.max()], 'k--', lw=2)
+        ax.set_xlabel('Scor Real')
+        ax.set_ylabel('Scor Prezis')
+        ax.set_title('Comparare intre scorurile reale si cele prezise')
+        st.pyplot(fig)
+
+        st.subheader("Analiza reziduurilor")
+        residuals = y_test - y_pred
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
+
+        sns.histplot(residuals, kde=True, ax=ax1)
+        ax1.set_title('Distribuția reziduurilor')
+
+        sns.scatterplot(x=y_pred, y=residuals, ax=ax2)
+        ax2.axhline(y=0, color='r', linestyle='--')
+        ax2.set_title('Reziduuri vs Predicții')
+
+        st.pyplot(fig)
